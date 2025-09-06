@@ -81,6 +81,10 @@ int read_matrix_into_padded(const char *filename, int kernel_height, int kernel_
 float **generate_random_matrix_into_padded(int height, int width, int kernel_height, int kernel_width,
                                           float min_val, float max_val, float ***padded,
                                           int *padded_height, int *padded_width);
+int generate_feature_map(const char* filename, int height, int width);
+int write_matrix_header(const char *filename, int rows, int cols);
+int write_matrix_data_batch(const char *filename, int start_row, int end_row, int cols, 
+                           float min_val, float max_val);
 
 /**
  * @brief Compare two matrices element-wise within an absolute tolerance.
