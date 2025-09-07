@@ -2,6 +2,7 @@
 #define CONV2D_H
 
 #include <omp.h>
+#include <stdio.h>
 #include <unistd.h>
 
 /**
@@ -384,16 +385,23 @@ float *generate_random_matrix_into_padded_flatten(int height, int width, int ker
 typedef struct {
     float *chunk_data;           // Current chunk data
     float *padded_chunk;         // Padded chunk data
+    float *output_chunk;         // Output chunk data (for streaming)
     int chunk_height;            // Height of current chunk
     int chunk_width;             // Width of current chunk
     int padded_chunk_height;     // Height of padded chunk
     int padded_chunk_width;      // Width of padded chunk
+    int output_chunk_height;     // Height of output chunk
+    int output_chunk_width;      // Width of output chunk
     int start_row;               // Starting row in original matrix
     int end_row;                 // Ending row in original matrix
+    int total_height;            // Total height of input matrix
+    int total_width;             // Total width of input matrix
     int overlap_top;             // Overlap with previous chunk (top)
     int overlap_bottom;          // Overlap with next chunk (bottom)
     int is_first_chunk;          // Flag for first chunk
     int is_last_chunk;           // Flag for last chunk
+    FILE *output_file;           // Output file for streaming
+    int output_written;          // Number of output rows written
 } streaming_chunk_t;
 
 /**
@@ -432,6 +440,26 @@ int read_next_chunk(streaming_chunk_t *ctx, const char *filename);
  */
 void process_chunk(streaming_chunk_t *ctx, float *kernel, int kernel_height, int kernel_width,
                   float *output, int total_width, int use_serial);
+
+/**
+ * @brief Process current chunk with streaming output
+ *
+ * @param ctx Streaming context
+ * @param kernel Kernel matrix
+ * @param kernel_height Height of kernel
+ * @param kernel_width Width of kernel
+ * @param use_serial Use serial implementation if 1, parallel if 0
+ */
+void process_chunk_streaming(streaming_chunk_t *ctx, float *kernel, int kernel_height, int kernel_width,
+                            int use_serial);
+
+/**
+ * @brief Write output chunk to file
+ *
+ * @param ctx Streaming context
+ * @return int 0 on success, -1 on failure
+ */
+int write_output_chunk(streaming_chunk_t *ctx);
 
 /**
  * @brief Clean up streaming context

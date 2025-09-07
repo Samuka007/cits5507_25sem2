@@ -356,7 +356,100 @@ int main(int argc, char *argv[]) {
         
             return EXIT_FAILURE;
         } else {
+            // Streaming convolution for large matrices
+            if (verbose) {
+                printf("Using streaming convolution for large matrix...\n");
+            }
             
+            // Calculate optimal chunk height for cache efficiency
+            size_t available_memory = 8; // 8GB default
+            int chunk_height = calculate_optimal_chunk_height(height, kernel_height, available_memory);
+            
+            if (verbose) {
+                printf("Chunk height: %d\n", chunk_height);
+            }
+            
+            // Initialize streaming context
+            streaming_chunk_t *stream_ctx = init_streaming_conv(input_file, kernel_height, kernel_width, 
+                                                              chunk_height, height, width);
+            if (!stream_ctx) {
+                perror("Error: Failed to initialize streaming context");
+                exit(EXIT_FAILURE);
+            }
+            
+            // Read kernel
+            if (read_matrix_from_file_flatten(kernel_file, &kernel, &kernel_height, &kernel_width) == -1) {
+                perror("Error: Failed to read kernel file");
+                cleanup_streaming_conv(stream_ctx);
+                exit(EXIT_FAILURE);
+            }
+            
+            // Initialize output file for streaming
+            if (output_file) {
+                stream_ctx->output_file = fopen(output_file, "w");
+                if (!stream_ctx->output_file) {
+                    perror("Error: Failed to open output file for writing");
+                    cleanup_streaming_conv(stream_ctx);
+                    free_matrix_flatten(kernel);
+                    exit(EXIT_FAILURE);
+                }
+                // Write output matrix header
+                fprintf(stream_ctx->output_file, "%d %d\n", height, width);
+            }
+            
+            // Perform streaming convolution
+            double start_time = 0.0, end_time = 0.0;
+            
+            if (time_execution || time_execution_seconds) {
+                start_time = omp_get_wtime();
+            }
+            
+            int chunk_count = 0;
+            while (read_next_chunk(stream_ctx, input_file) == 1) {
+                if (verbose) {
+                    printf("Processing chunk %d (rows %d-%d)...\n", 
+                           ++chunk_count, stream_ctx->start_row - stream_ctx->chunk_height, 
+                           stream_ctx->start_row);
+                }
+                
+                // Process current chunk with streaming output
+                process_chunk_streaming(stream_ctx, kernel, kernel_height, kernel_width, use_serial);
+                
+                // Write output chunk to file
+                if (stream_ctx->output_file) {
+                    if (write_output_chunk(stream_ctx) == -1) {
+                        perror("Error: Failed to write output chunk");
+                        cleanup_streaming_conv(stream_ctx);
+                        free_matrix_flatten(kernel);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
+            
+            end_time = omp_get_wtime();
+            
+            if (time_execution) {
+                printf("Execution time: %.3f ms\n", (end_time - start_time) * 1000);
+            }
+            
+            if (time_execution_seconds) {
+                printf("%d\n", (int)(end_time - start_time));
+            }
+            
+            if (verbose) {
+                printf("Processed %d chunks total\n", chunk_count);
+                printf("Output written to %s\n", output_file ? output_file : "stdout");
+            }
+            
+            // Clean up
+            cleanup_streaming_conv(stream_ctx);
+            free_matrix_flatten(kernel);
+            
+            if (verbose) {
+                printf("Streaming convolution completed successfully.\n");
+            }
+            
+            return EXIT_SUCCESS;
         }
     }
 }
