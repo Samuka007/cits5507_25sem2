@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include "../include/conv2d.h"
 
 #include <math.h>
@@ -6,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#ifndef MATRIX_ALIGNMENT
+#define MATRIX_ALIGNMENT 32
+#endif
 
 void conv2d_serial(float **restrict f, int H, int W, float **restrict g, int kH, int kW,
                    float **restrict output) {
@@ -82,7 +85,7 @@ void conv2d_parallel_flatten(float *restrict f, int H, int W, float *restrict g,
     const int out_W = W - kW + 1;
 
     // Perform parallel convolution on flattened arrays
-    #pragma omp parallel for simd collapse(2) schedule(static)
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 0; i < out_H; i++) {
         for (int j = 0; j < out_W; j++) {
             float sum = 0.0f;
@@ -101,14 +104,6 @@ void conv2d_parallel_flatten(float *restrict f, int H, int W, float *restrict g,
     }
 }
 
-#if defined(_ISOC11_SOURCE)
-#define ALIGNED_ALLOC_SUPPORTED
-#endif
-
-#ifndef MATRIX_ALIGNMENT
-#define MATRIX_ALIGNMENT 32
-#endif
-
 /**
  * @brief Allocate a 2D matrix
  *
@@ -118,24 +113,15 @@ void conv2d_parallel_flatten(float *restrict f, int H, int W, float *restrict g,
  */
 float **allocate_matrix(int rows, int cols) {
     float **matrix = NULL;
-#ifdef ALIGNED_ALLOC_SUPPORTED
     matrix = (float **)aligned_alloc(MATRIX_ALIGNMENT, rows * sizeof(float *));
-#else
-    // fallback to malloc if aligned_alloc is not available
-    matrix = (float **)malloc(rows * sizeof(float *));
-#endif
     if (matrix == NULL) {
         perror("Error: Failed to allocate memory for matrix rows\n");
         exit(EXIT_FAILURE);
     }
 
     for (int i = 0; i < rows; i++) {
-#ifdef ALIGNED_ALLOC_SUPPORTED
         matrix[i] =
             (float *)aligned_alloc(MATRIX_ALIGNMENT, cols * sizeof(float));
-#else
-        matrix[i] = (float *)malloc(cols * sizeof(float));
-#endif
         if (matrix[i] == NULL) {
             perror("Error: Failed to allocate memory for matrix columns\n");
             // Free previously allocated rows
@@ -208,11 +194,7 @@ void generate_padded_matrix(float **input, int height, int width,
 // Allocate a flattened matrix
 float *allocate_matrix_flatten(int rows, int cols) {
     float *matrix = NULL;
-#ifdef ALIGNED_ALLOC_SUPPORTED
     matrix = (float *)aligned_alloc(MATRIX_ALIGNMENT, rows * cols * sizeof(float));
-#else
-    matrix = (float *)malloc(rows * cols * sizeof(float));
-#endif
     if (matrix == NULL) {
         perror("Error: Failed to allocate memory for flattened matrix\n");
         exit(EXIT_FAILURE);
