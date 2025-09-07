@@ -71,7 +71,7 @@ while [ "$time_limit_reached" = false ]; do
     fi
     
     # Safety check to prevent infinite loop
-    if [ $matrix_size -gt 100000000 ]; then
+    if [ $matrix_size -gt 10000 ]; then
         echo "Safety limit reached: matrix size too large (${matrix_size})"
         time_limit_reached=true
     fi
