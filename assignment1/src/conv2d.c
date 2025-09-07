@@ -37,10 +37,11 @@ void conv2d_parallel(float **restrict f, int H, int W, float **restrict g, int k
     const int out_W = W - kW + 1;
 
     // Perform parallel convolution
-#pragma omp parallel for collapse(2) schedule(static)
+#pragma omp parallel for simd collapse(2) schedule(static)
     for (int i = 0; i < out_H; i++) {
         for (int j = 0; j < out_W; j++) {
             float sum = 0.0f;
+
             for (int ki = 0; ki < kH; ki++) {
                 for (int kj = 0; kj < kW; kj++) {
                     sum += f[i + ki][j + kj] * g[ki][kj];
@@ -52,210 +53,50 @@ void conv2d_parallel(float **restrict f, int H, int W, float **restrict g, int k
     }
 }
 
-/**
- * @brief Highly optimized parallel convolution with kernel-specific optimizations
- * 
- * This implementation uses multiple acceleration techniques:
- * - Kernel unrolling for small kernels (3x3, 5x5)
- * - SIMD vectorization with proper alignment
- * - Memory prefetching hints
- * - Optimized loop structures
- *
- * @param f Input matrix
- * @param H Number of rows in input matrix
- * @param W Number of columns in input matrix
- * @param g Kernel matrix
- * @param kH Number of rows in kernel matrix
- * @param kW Number of columns in kernel matrix
- * @param output Output matrix
- */
-void conv2d_parallel_optimized(float **restrict f, int H, int W, float **restrict g, int kH, int kW,
-                               float **restrict output) {
-    const int out_H = H - kH + 1;
-    const int out_W = W - kW + 1;
-    
-    // Specialized implementations for common kernel sizes
-    if (kH == 3 && kW == 3) {
-        conv2d_3x3_optimized(f, H, W, g, output);
-        return;
-    } else if (kH == 5 && kW == 5) {
-        conv2d_5x5_optimized(f, H, W, g, output);
-        return;
-    }
-    
-    // General optimized implementation for other kernel sizes
-    #pragma omp parallel for collapse(2) schedule(static)
-    for (int i = 0; i < out_H; i++) {
-        for (int j = 0; j < out_W; j++) {
-            float sum = 0.0f;
-            
-            // Unroll kernel loops for better performance
-            #pragma omp simd reduction(+:sum)
-            for (int ki = 0; ki < kH; ki++) {
-                // Vectorization with reduction
-                for (int kj = 0; kj < kW; kj++) {
-                    sum += f[i + ki][j + kj] * g[ki][kj];
-                }
-            }
-            
-            output[i][j] = sum;
-        }
-    }
-}
-
-/**
- * @brief Highly optimized 3x3 kernel convolution
- * 
- * Uses loop unrolling and SIMD optimizations specifically for 3x3 kernels
- */
-void conv2d_3x3_optimized(float **restrict f, int H, int W, float **restrict g, float **restrict output) {
-    const int out_H = H - 2;
-    const int out_W = W - 2;
-    
-    // Extract kernel values for better cache access
-    const float g00 = g[0][0], g01 = g[0][1], g02 = g[0][2];
-    const float g10 = g[1][0], g11 = g[1][1], g12 = g[1][2];
-    const float g20 = g[2][0], g21 = g[2][1], g22 = g[2][2];
-    
-    #pragma omp parallel for schedule(static)
-    for (int i = 0; i < out_H; i++) {
-        for (int j = 0; j < out_W; j++) {
-            // Unrolled 3x3 convolution for maximum performance
-            float sum = f[i][j] * g00 + f[i][j+1] * g01 + f[i][j+2] * g02 +
-                       f[i+1][j] * g10 + f[i+1][j+1] * g11 + f[i+1][j+2] * g12 +
-                       f[i+2][j] * g20 + f[i+2][j+1] * g21 + f[i+2][j+2] * g22;
-            
-            output[i][j] = sum;
-        }
-    }
-}
-
-/**
- * @brief Highly optimized 5x5 kernel convolution
- * 
- * Uses loop unrolling and SIMD optimizations specifically for 5x5 kernels
- */
-void conv2d_5x5_optimized(float **restrict f, int H, int W, float **restrict g, float **restrict output) {
-    const int out_H = H - 4;
-    const int out_W = W - 4;
-    
-    // Extract kernel values for better cache access
-    const float g00 = g[0][0], g01 = g[0][1], g02 = g[0][2], g03 = g[0][3], g04 = g[0][4];
-    const float g10 = g[1][0], g11 = g[1][1], g12 = g[1][2], g13 = g[1][3], g14 = g[1][4];
-    const float g20 = g[2][0], g21 = g[2][1], g22 = g[2][2], g23 = g[2][3], g24 = g[2][4];
-    const float g30 = g[3][0], g31 = g[3][1], g32 = g[3][2], g33 = g[3][3], g34 = g[3][4];
-    const float g40 = g[4][0], g41 = g[4][1], g42 = g[4][2], g43 = g[4][3], g44 = g[4][4];
-    
-    #pragma omp parallel for schedule(static)
-    for (int i = 0; i < out_H; i++) {
-        for (int j = 0; j < out_W; j++) {
-            // Unrolled 5x5 convolution
-            float sum = f[i][j] * g00 + f[i][j+1] * g01 + f[i][j+2] * g02 + f[i][j+3] * g03 + f[i][j+4] * g04 +
-                       f[i+1][j] * g10 + f[i+1][j+1] * g11 + f[i+1][j+2] * g12 + f[i+1][j+3] * g13 + f[i+1][j+4] * g14 +
-                       f[i+2][j] * g20 + f[i+2][j+1] * g21 + f[i+2][j+2] * g22 + f[i+2][j+3] * g23 + f[i+2][j+4] * g24 +
-                       f[i+3][j] * g30 + f[i+3][j+1] * g31 + f[i+3][j+2] * g32 + f[i+3][j+3] * g33 + f[i+3][j+4] * g34 +
-                       f[i+4][j] * g40 + f[i+4][j+1] * g41 + f[i+4][j+2] * g42 + f[i+4][j+3] * g43 + f[i+4][j+4] * g44;
-            
-            output[i][j] = sum;
-        }
-    }
-}
-
-/**
- * @brief SIMD-optimized convolution with vectorization
- * 
- * Uses advanced SIMD techniques and memory prefetching
- */
-void conv2d_parallel_simd_optimized(float **restrict f, int H, int W, float **restrict g, int kH, int kW,
-                                    float **restrict output) {
-    const int out_H = H - kH + 1;
-    const int out_W = W - kW + 1;
-    
-    #pragma omp parallel for schedule(static)
-    for (int i = 0; i < out_H; i++) {
-        // Prefetch next row for better cache utilization
-        if (i + 1 < out_H) {
-            __builtin_prefetch(&f[i + 1][0], 0, 3);
-        }
-        
-        for (int j = 0; j < out_W; j++) {
-            float sum = 0.0f;
-            
-            // Process kernel with vectorization
-            for (int ki = 0; ki < kH; ki++) {
-                // Prefetch next kernel row
-                if (ki + 1 < kH) {
-                    __builtin_prefetch(&f[i + ki + 1][j], 0, 3);
-                }
-                
-                // Vectorized inner loop
-                #pragma omp simd reduction(+:sum)
-                for (int kj = 0; kj < kW; kj++) {
-                    sum += f[i + ki][j + kj] * g[ki][kj];
-                }
-            }
-            
-            output[i][j] = sum;
-        }
-    }
-}
-
-void conv2d_parallel_cache_optimized(float **restrict f, int H, int W, float **restrict g, int kH, int kW,
-                                     float **restrict output) {
+void conv2d_serial_flatten(float *restrict f, int H, int W, float *restrict g, int kH, int kW, float *restrict output) {
     // Compute valid output dimensions from padded input and kernel sizes
     const int out_H = H - kH + 1;
     const int out_W = W - kW + 1;
-    
-    // Adaptive block size based on problem dimensions
-    // For small problems, use smaller blocks or no blocking
-    int BLOCK_SIZE;
-    if (out_H < 64 || out_W < 64) {
-        // For small problems, use the original approach but with better scheduling
-        #pragma omp parallel for collapse(2) schedule(static)
-        for (int i = 0; i < out_H; i++) {
-            for (int j = 0; j < out_W; j++) {
-                float sum = 0.0f;
-                for (int ki = 0; ki < kH; ki++) {
-                    for (int kj = 0; kj < kW; kj++) {
-                        sum += f[i + ki][j + kj] * g[ki][kj];
-                    }
+
+    // Perform serial convolution on flattened arrays
+    for (int i = 0; i < out_H; i++) {
+        for (int j = 0; j < out_W; j++) {
+            float sum = 0.0f;
+
+            for (int ki = 0; ki < kH; ki++) {
+                for (int kj = 0; kj < kW; kj++) {
+                    int f_idx = (i + ki) * W + (j + kj);
+                    int g_idx = ki * kW + kj;
+                    sum += f[f_idx] * g[g_idx];
                 }
-                output[i][j] = sum;
             }
+
+            output[i * out_W + j] = sum;
         }
-        return;
-    } else if (out_H < 256 || out_W < 256) {
-        BLOCK_SIZE = 32; // Smaller blocks for medium problems
-    } else {
-        BLOCK_SIZE = 64; // Larger blocks for big problems
     }
-    
-    // Perform cache-optimized parallel convolution with tiling
-    // Use static scheduling for better performance with regular workloads
-    #pragma omp parallel for collapse(2) schedule(static)
-    for (int ii = 0; ii < out_H; ii += BLOCK_SIZE) {
-        for (int jj = 0; jj < out_W; jj += BLOCK_SIZE) {
-            // Process block with bounds checking
-            int i_end = (ii + BLOCK_SIZE < out_H) ? ii + BLOCK_SIZE : out_H;
-            int j_end = (jj + BLOCK_SIZE < out_W) ? jj + BLOCK_SIZE : out_W;
-            
-            for (int i = ii; i < i_end; i++) {
-                for (int j = jj; j < j_end; j++) {
-                    float sum = 0.0f;
-                    
-                    // Reorder kernel loops for better cache locality
-                    // Process kernel in row-major order
-                    for (int ki = 0; ki < kH; ki++) {
-                        // Vectorization hint for inner loop
-                        #pragma omp simd reduction(+:sum)
-                        for (int kj = 0; kj < kW; kj++) {
-                            sum += f[i + ki][j + kj] * g[ki][kj];
-                        }
-                    }
-                    
-                    output[i][j] = sum;
+}
+
+void conv2d_parallel_flatten(float *restrict f, int H, int W, float *restrict g, int kH, int kW, float *restrict output) {
+    // Compute valid output dimensions from padded input and kernel sizes
+    const int out_H = H - kH + 1;
+    const int out_W = W - kW + 1;
+
+    // Perform parallel convolution on flattened arrays
+    #pragma omp parallel for simd collapse(2) schedule(static)
+    for (int i = 0; i < out_H; i++) {
+        for (int j = 0; j < out_W; j++) {
+            float sum = 0.0f;
+
+            #pragma omp simd collapse(2) reduction(+:sum)
+            for (int ki = 0; ki < kH; ki++) {
+                for (int kj = 0; kj < kW; kj++) {
+                    int f_idx = (i + ki) * W + (j + kj);
+                    int g_idx = ki * kW + kj;
+                    sum += f[f_idx] * g[g_idx];
                 }
             }
+
+            output[i * out_W + j] = sum;
         }
     }
 }
@@ -360,4 +201,45 @@ void generate_padded_matrix(float **input, int height, int width,
         memcpy((*padded)[i + pad_top] + pad_left, input[i],
                width * sizeof(float));
     }
+}
+
+// ===== FLATTENED ARRAY FUNCTIONS =====
+
+// Allocate a flattened matrix
+float *allocate_matrix_flatten(int rows, int cols) {
+    float *matrix = NULL;
+#ifdef ALIGNED_ALLOC_SUPPORTED
+    matrix = (float *)aligned_alloc(MATRIX_ALIGNMENT, rows * cols * sizeof(float));
+#else
+    matrix = (float *)malloc(rows * cols * sizeof(float));
+#endif
+    if (matrix == NULL) {
+        perror("Error: Failed to allocate memory for flattened matrix\n");
+        exit(EXIT_FAILURE);
+    }
+    return matrix;
+}
+
+// Free a flattened matrix
+void free_matrix_flatten(float *matrix) {
+    if (matrix != NULL) {
+        free(matrix);
+    }
+}
+
+// Initialize flattened matrix with a specific value
+void initialize_matrix_flatten(float *matrix, int rows, int cols, float value) {
+    for (int i = 0; i < rows * cols; i++) {
+        matrix[i] = value;
+    }
+}
+
+// Compare two flattened matrices with tolerance
+int compare_matrices_flatten(float *matrix1, float *matrix2, int rows, int cols, float tolerance) {
+    for (int i = 0; i < rows * cols; i++) {
+        if (fabs(matrix1[i] - matrix2[i]) > tolerance) {
+            return 0;  // Matrices are different
+        }
+    }
+    return 1;  // Matrices are the same
 }

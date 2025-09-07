@@ -3,8 +3,8 @@
 
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O3 -fopenmp
-DEBUG_FLAGS = -Wall -Wextra -std=c11 -g -fopenmp -DDEBUG
+CFLAGS = -Wall -Wextra -std=c11 -O3 -fopenmp -mavx2
+DEBUG_FLAGS = -Wall -Wextra -std=c11 -g -fopenmp -DDEBUG -mavx2
 
 # Directories
 SRC_DIR = src

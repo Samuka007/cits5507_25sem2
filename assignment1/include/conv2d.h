@@ -133,6 +133,36 @@ void conv2d_5x5_optimized(float **restrict f, int H, int W, float **restrict g, 
 void conv2d_parallel_simd_optimized(float **restrict f, int H, int W, float **restrict g, int kH, int kW,
                                     float **restrict output);
 
+// ===== FLATTENED ARRAY FUNCTIONS =====
+
+/**
+ * @brief Serial implementation of 2D convolution using flattened arrays
+ *
+ * @param f Input matrix (flattened)
+ * @param H Number of rows in input matrix
+ * @param W Number of columns in input matrix
+ * @param g Kernel matrix (flattened)
+ * @param kH Number of rows in kernel matrix
+ * @param kW Number of columns in kernel matrix
+ * @param output Output matrix (flattened)
+ */
+void conv2d_serial_flatten(float *restrict f, int H, int W, float *restrict g, int kH, int kW,
+                           float *restrict output);
+
+/**
+ * @brief Parallel implementation of 2D convolution using flattened arrays
+ *
+ * @param f Input matrix (flattened)
+ * @param H Number of rows in input matrix
+ * @param W Number of columns in input matrix
+ * @param g Kernel matrix (flattened)
+ * @param kH Number of rows in kernel matrix
+ * @param kW Number of columns in kernel matrix
+ * @param output Output matrix (flattened)
+ */
+void conv2d_parallel_flatten(float *restrict f, int H, int W, float *restrict g, int kH, int kW,
+                             float *restrict output);
+
 /**
  * @brief Allocate a matrix with the specified number of rows and columns
  *
@@ -203,5 +233,125 @@ int write_matrix_data_batch(const char *filename, int start_row, int end_row, in
  */
 int compare_matrices(float **matrix1, float **matrix2, int rows, int cols,
                      float tolerance);
+
+// ===== FLATTENED ARRAY MEMORY MANAGEMENT =====
+
+/**
+ * @brief Allocate a flattened matrix with the specified number of rows and columns
+ *
+ * @param rows Number of rows in the matrix
+ * @param cols Number of columns in the matrix
+ * @return Pointer to the allocated flattened matrix
+ */
+float *allocate_matrix_flatten(int rows, int cols);
+
+/**
+ * @brief Free a flattened matrix
+ *
+ * @param matrix Pointer to the flattened matrix to free
+ */
+void free_matrix_flatten(float *matrix);
+
+/**
+ * @brief Initialize a flattened matrix with the specified value
+ *
+ * @param matrix Pointer to the flattened matrix to initialize
+ * @param rows Number of rows in the matrix
+ * @param cols Number of columns in the matrix
+ * @param value Value to initialize the matrix with
+ */
+void initialize_matrix_flatten(float *matrix, int rows, int cols, float value);
+
+/**
+ * @brief Compare two flattened matrices element-wise within an absolute tolerance
+ *
+ * @param matrix1 Pointer to the first flattened matrix
+ * @param matrix2 Pointer to the second flattened matrix
+ * @param rows Number of rows in both matrices
+ * @param cols Number of columns in both matrices
+ * @param tolerance Maximum allowed absolute difference per element
+ * @return int 1 if matrices are equal within tolerance, 0 otherwise
+ */
+int compare_matrices_flatten(float *matrix1, float *matrix2, int rows, int cols,
+                             float tolerance);
+
+// ===== FLATTENED ARRAY I/O FUNCTIONS =====
+
+/**
+ * @brief Read matrix from file into flattened format
+ *
+ * @param filename Path to the input file
+ * @param matrix Pointer to store the flattened matrix
+ * @param rows Pointer to store number of rows
+ * @param cols Pointer to store number of columns
+ * @return int 0 on success, -1 on failure
+ */
+int read_matrix_from_file_flatten(const char *filename, float **matrix, int *rows, int *cols);
+
+/**
+ * @brief Write flattened matrix to file
+ *
+ * @param filename Path to the output file
+ * @param matrix Flattened matrix to write
+ * @param rows Number of rows in the matrix
+ * @param cols Number of columns in the matrix
+ * @return int 0 on success, -1 on failure
+ */
+int write_matrix_to_file_flatten(const char *filename, float *matrix, int rows, int cols);
+
+/**
+ * @brief Print flattened matrix to stdout
+ *
+ * @param matrix Flattened matrix to print
+ * @param rows Number of rows in the matrix
+ * @param cols Number of columns in the matrix
+ */
+void print_matrix_flatten(float *matrix, int rows, int cols);
+
+/**
+ * @brief Generate random matrix in flattened format
+ *
+ * @param rows Number of rows
+ * @param cols Number of columns
+ * @param min_val Minimum value
+ * @param max_val Maximum value
+ * @return Pointer to the generated flattened matrix
+ */
+float *generate_random_matrix_flatten(int rows, int cols, float min_val, float max_val);
+
+/**
+ * @brief Read matrix from file directly into padded flattened format
+ *
+ * @param filename Path to the input file
+ * @param kernel_height Height of the kernel (for padding calculation)
+ * @param kernel_width Width of the kernel (for padding calculation)
+ * @param padded Pointer to store the padded flattened matrix
+ * @param padded_height Pointer to store padded height
+ * @param padded_width Pointer to store padded width
+ * @param original_height Pointer to store original height
+ * @param original_width Pointer to store original width
+ * @return int 0 on success, -1 on failure
+ */
+int read_matrix_into_padded_flatten(const char *filename, int kernel_height, int kernel_width,
+                                   float **padded, int *padded_height, int *padded_width,
+                                   int *original_height, int *original_width);
+
+/**
+ * @brief Generate random matrix directly into padded flattened format
+ *
+ * @param height Original height
+ * @param width Original width
+ * @param kernel_height Height of the kernel (for padding calculation)
+ * @param kernel_width Width of the kernel (for padding calculation)
+ * @param min_val Minimum value
+ * @param max_val Maximum value
+ * @param padded Pointer to store the padded flattened matrix
+ * @param padded_height Pointer to store padded height
+ * @param padded_width Pointer to store padded width
+ * @return Pointer to the original data area in the padded matrix
+ */
+float *generate_random_matrix_into_padded_flatten(int height, int width, int kernel_height, int kernel_width,
+                                                 float min_val, float max_val, float **padded,
+                                                 int *padded_height, int *padded_width);
 
 #endif  // CONV2D_H

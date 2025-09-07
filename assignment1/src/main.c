@@ -131,8 +131,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    float **kernel = NULL;
-    float **padded = NULL;
+    float *kernel = NULL;
+    float *padded = NULL;
     int padded_height, padded_width;
     int original_height, original_width;
 
@@ -169,9 +169,9 @@ int main(int argc, char *argv[]) {
             printf("Generating random matrices...\n");
         }
 
-        generate_random_matrix_into_padded(height, width, kernel_height, kernel_width,
-                                          0.0f, 1.0f, &padded, &padded_height, &padded_width);
-        kernel = generate_random_matrix(kernel_height, kernel_width, 0.0f, 1.0f);
+        generate_random_matrix_into_padded_flatten(height, width, kernel_height, kernel_width,
+                                                   0.0f, 1.0f, &padded, &padded_height, &padded_width);
+        kernel = generate_random_matrix_flatten(kernel_height, kernel_width, 0.0f, 1.0f);
         original_height = height;
         original_width = width;
 
@@ -188,14 +188,14 @@ int main(int argc, char *argv[]) {
             printf("Loading input matrices from files...\n");
         }
 
-        if (read_matrix_from_file(kernel_file, &kernel, &kernel_height,
-                                  &kernel_width) == -1) {
+        if (read_matrix_from_file_flatten(kernel_file, &kernel, &kernel_height,
+                                          &kernel_width) == -1) {
             perror("Error read kernel file");
             exit(EXIT_FAILURE);
         }
-        if (read_matrix_into_padded(input_file, kernel_height, kernel_width,
-                                   &padded, &padded_height, &padded_width,
-                                   &original_height, &original_width) == -1) {
+        if (read_matrix_into_padded_flatten(input_file, kernel_height, kernel_width,
+                                           &padded, &padded_height, &padded_width,
+                                           &original_height, &original_width) == -1) {
             perror("Error read inputfile");
             goto checkpoint1;
         }
@@ -215,10 +215,10 @@ int main(int argc, char *argv[]) {
     }
 
     // Allocate output matrix
-    float **output = allocate_matrix(height, width);
+    float *output = allocate_matrix_flatten(height, width);
 
     // Perform convolution
-    double start_time, end_time;
+    double start_time = 0.0, end_time = 0.0;
 
     if (time_execution || time_execution_seconds) {
         start_time = omp_get_wtime();
@@ -228,14 +228,14 @@ int main(int argc, char *argv[]) {
         if (verbose) {
             printf("Running serial convolution...\n");
         }
-        conv2d_serial(padded, padded_height, padded_width, kernel,
-                      kernel_height, kernel_width, output);
+        conv2d_serial_flatten(padded, padded_height, padded_width, kernel,
+                              kernel_height, kernel_width, output);
     } else {
         if (verbose) {
             printf("Running parallel convolution...\n");
         }
-        conv2d_parallel(padded, padded_height, padded_width, kernel,
-                        kernel_height, kernel_width, output);
+        conv2d_parallel_flatten(padded, padded_height, padded_width, kernel,
+                                kernel_height, kernel_width, output);
     }
 
     end_time = omp_get_wtime();
@@ -254,27 +254,27 @@ int main(int argc, char *argv[]) {
         }
 
         // Extract original input from padded matrix for writing
-        float **input_for_writing = allocate_matrix(height, width);
+        float *input_for_writing = allocate_matrix_flatten(height, width);
         int pad_top = (kernel_height - 1) / 2;
         int pad_left = (kernel_width - 1) / 2;
         
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
-                input_for_writing[i][j] = padded[i + pad_top][j + pad_left];
+                input_for_writing[i * width + j] = padded[(i + pad_top) * padded_width + (j + pad_left)];
             }
         }
 
-        if (write_matrix_to_file(input_file, input_for_writing, height, width) == -1) {
-            free_matrix(input_for_writing, height);
+        if (write_matrix_to_file_flatten(input_file, input_for_writing, height, width) == -1) {
+            free_matrix_flatten(input_for_writing);
             goto failure;
         }
-        if (write_matrix_to_file(kernel_file, kernel, kernel_height,
-                                 kernel_width) == -1) {
-            free_matrix(input_for_writing, height);
+        if (write_matrix_to_file_flatten(kernel_file, kernel, kernel_height,
+                                         kernel_width) == -1) {
+            free_matrix_flatten(input_for_writing);
             goto failure;
         }
         
-        free_matrix(input_for_writing, height);
+        free_matrix_flatten(input_for_writing);
     }
 
     // Output results
@@ -283,33 +283,34 @@ int main(int argc, char *argv[]) {
             if (verbose) {
                 printf("Writing output to %s...\n", output_file);
             }
-            if (write_matrix_to_file(output_file, output, height, width) ==
+            if (write_matrix_to_file_flatten(output_file, output, height, width) ==
                 -1) {
                 goto failure;
             }
         } else {
             // compare with given matrix
-            float **v_output;
+            float *v_output;
             int v_height, v_width;
-            if (read_matrix_from_file(output_file, &v_output, &v_height,
-                                      &v_width) == -1) {
+            if (read_matrix_from_file_flatten(output_file, &v_output, &v_height,
+                                              &v_width) == -1) {
                 goto failure;
             }
-            if (compare_matrices(v_output, output, height, width,
-                                 1.0f / powf(10, precision)) == 1) {
+            if (compare_matrices_flatten(v_output, output, height, width,
+                                         1.0f / powf(10, precision)) == 1) {
                 puts("Verify Pass!");
             } else {
                 puts("Verify Failed!");
             }
+            free_matrix_flatten(v_output);
         }
     } else if (verbose) {
-        print_matrix(output, height, width);
+        print_matrix_flatten(output, height, width);
     }
 
     // Clean up
-    free_matrix(kernel, kernel_height);
-    free_matrix(padded, padded_height);
-    free_matrix(output, height);
+    free_matrix_flatten(kernel);
+    free_matrix_flatten(padded);
+    free_matrix_flatten(output);
 
     if (verbose) {
         printf("Done.\n");
@@ -319,11 +320,11 @@ int main(int argc, char *argv[]) {
 
 failure:
     // Clean up
-    free_matrix(output, height);
+    free_matrix_flatten(output);
 checkpoint2:
-    free_matrix(padded, padded_height);
+    free_matrix_flatten(padded);
 checkpoint1:
-    free_matrix(kernel, kernel_height);
+    free_matrix_flatten(kernel);
 
     return EXIT_FAILURE;
 }
