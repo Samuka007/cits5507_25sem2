@@ -6,6 +6,25 @@
 
 #include "../include/conv2d.h"
 
+// Read matrix dimensions from file (first line only)
+int read_matrix_dimensions(const char *filename, int *rows, int *cols) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error: Cannot open file");
+        return -1;
+    }
+
+    // Read dimensions
+    if (fscanf(file, "%d %d", rows, cols) != 2) {
+        perror("Error: Cannot read matrix dimensions");
+        fclose(file);
+        return -1;
+    }
+
+    fclose(file);
+    return 0;
+}
+
 // Read matrix from file in the specified format
 int read_matrix_from_file(const char *filename, float ***matrix, int *rows,
                           int *cols) {

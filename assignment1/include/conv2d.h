@@ -191,6 +191,7 @@ void free_matrix(float **matrix, int rows);
 void initialize_matrix(float **matrix, int rows, int cols, float value);
 
 // Matrix I/O functions
+int read_matrix_dimensions(const char *filename, int *rows, int *cols);
 int read_matrix_from_file(const char *filename, float ***matrix, int *rows,
                           int *cols);
 int write_matrix_to_file(const char *filename, float **matrix, int rows,
@@ -278,6 +279,16 @@ int compare_matrices_flatten(float *matrix1, float *matrix2, int rows, int cols,
 // ===== FLATTENED ARRAY I/O FUNCTIONS =====
 
 /**
+ * @brief Read matrix dimensions from file (first line only) - flattened version
+ *
+ * @param filename Path to the input file
+ * @param rows Pointer to store number of rows
+ * @param cols Pointer to store number of columns
+ * @return int 0 on success, -1 on failure
+ */
+int read_matrix_dimensions(const char *filename, int *rows, int *cols);
+
+/**
  * @brief Read matrix from file into flattened format
  *
  * @param filename Path to the input file
@@ -287,6 +298,17 @@ int compare_matrices_flatten(float *matrix1, float *matrix2, int rows, int cols,
  * @return int 0 on success, -1 on failure
  */
 int read_matrix_from_file_flatten(const char *filename, float **matrix, int *rows, int *cols);
+
+/**
+ * @brief Read large matrix from file using memory-efficient approach
+ *
+ * @param filename Path to the input file
+ * @param matrix Pointer to store the flattened matrix
+ * @param rows Number of rows (already known)
+ * @param cols Number of columns (already known)
+ * @return int 0 on success, -1 on failure
+ */
+int read_large_matrix_from_file_flatten(const char *filename, float **matrix, int rows, int cols);
 
 /**
  * @brief Write flattened matrix to file
@@ -353,5 +375,113 @@ int read_matrix_into_padded_flatten(const char *filename, int kernel_height, int
 float *generate_random_matrix_into_padded_flatten(int height, int width, int kernel_height, int kernel_width,
                                                  float min_val, float max_val, float **padded,
                                                  int *padded_height, int *padded_width);
+
+// ===== STREAMING CONVOLUTION FUNCTIONS =====
+
+/**
+ * @brief Streaming convolution structure for managing chunks
+ */
+typedef struct {
+    float *chunk_data;           // Current chunk data
+    float *padded_chunk;         // Padded chunk data
+    int chunk_height;            // Height of current chunk
+    int chunk_width;             // Width of current chunk
+    int padded_chunk_height;     // Height of padded chunk
+    int padded_chunk_width;      // Width of padded chunk
+    int start_row;               // Starting row in original matrix
+    int end_row;                 // Ending row in original matrix
+    int overlap_top;             // Overlap with previous chunk (top)
+    int overlap_bottom;          // Overlap with next chunk (bottom)
+    int is_first_chunk;          // Flag for first chunk
+    int is_last_chunk;           // Flag for last chunk
+} streaming_chunk_t;
+
+/**
+ * @brief Initialize streaming convolution context
+ *
+ * @param filename Input feature map file
+ * @param kernel_height Height of kernel
+ * @param kernel_width Width of kernel
+ * @param chunk_height Height of each chunk (cache-friendly)
+ * @param total_height Total height of input matrix
+ * @param total_width Total width of input matrix
+ * @return streaming_chunk_t* Initialized streaming context
+ */
+streaming_chunk_t* init_streaming_conv(const char *filename, int kernel_height, int kernel_width, 
+                                      int chunk_height, int total_height, int total_width);
+
+/**
+ * @brief Read next chunk from file with proper padding
+ *
+ * @param ctx Streaming context
+ * @param filename Input file
+ * @return int 1 if chunk read successfully, 0 if no more chunks, -1 on error
+ */
+int read_next_chunk(streaming_chunk_t *ctx, const char *filename);
+
+/**
+ * @brief Process current chunk with parallel convolution
+ *
+ * @param ctx Streaming context
+ * @param kernel Kernel matrix
+ * @param kernel_height Height of kernel
+ * @param kernel_width Width of kernel
+ * @param output Output matrix (full size)
+ * @param total_width Width of full output matrix
+ * @param use_serial Use serial implementation if 1, parallel if 0
+ */
+void process_chunk(streaming_chunk_t *ctx, float *kernel, int kernel_height, int kernel_width,
+                  float *output, int total_width, int use_serial);
+
+/**
+ * @brief Clean up streaming context
+ *
+ * @param ctx Streaming context to clean up
+ */
+void cleanup_streaming_conv(streaming_chunk_t *ctx);
+
+/**
+ * @brief Calculate optimal chunk height for cache efficiency
+ *
+ * @param total_height Total height of input matrix
+ * @param kernel_height Height of kernel
+ * @param available_memory Available memory in bytes
+ * @return int Optimal chunk height
+ */
+int calculate_optimal_chunk_height(int total_height, int kernel_height, size_t available_memory);
+
+/**
+ * @brief Read matrix chunk from file with overlap for padding
+ *
+ * @param filename Input file
+ * @param start_row Starting row to read
+ * @param end_row Ending row to read (exclusive)
+ * @param total_width Total width of matrix
+ * @param overlap_top Rows to read before start_row for padding
+ * @param overlap_bottom Rows to read after end_row for padding
+ * @param chunk_data Buffer to store chunk data
+ * @param actual_height Actual height read (including overlaps)
+ * @return int 0 on success, -1 on failure
+ */
+int read_matrix_chunk(const char *filename, int start_row, int end_row, int total_width,
+                     int overlap_top, int overlap_bottom, float **chunk_data, int *actual_height);
+
+/**
+ * @brief Apply padding to chunk for convolution
+ *
+ * @param chunk_data Input chunk data
+ * @param chunk_height Height of input chunk
+ * @param chunk_width Width of input chunk
+ * @param kernel_height Height of kernel
+ * @param kernel_width Width of kernel
+ * @param padded_chunk Output padded chunk
+ * @param padded_height Height of padded chunk
+ * @param padded_width Width of padded chunk
+ * @param is_first_chunk Whether this is the first chunk
+ * @param is_last_chunk Whether this is the last chunk
+ */
+void apply_chunk_padding(float *chunk_data, int chunk_height, int chunk_width,
+                        int kernel_height, int kernel_width, float **padded_chunk,
+                        int *padded_height, int *padded_width, int is_first_chunk, int is_last_chunk);
 
 #endif  // CONV2D_H
