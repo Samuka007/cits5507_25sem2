@@ -12,8 +12,8 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 
 # Source files
-SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/conv2d_mpi.c $(SRC_DIR)/io_mpi.c $(SRC_DIR)/core.c
-OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/conv2d_mpi.c $(SRC_DIR)/io_mpi.c $(SRC_DIR)/core.c $(SRC_DIR)/log.c
+OBJECTS = $(BUILD_DIR)/main.o $(BUILD_DIR)/conv2d_mpi.o $(BUILD_DIR)/io_mpi.o $(BUILD_DIR)/core.o $(BUILD_DIR)/log.o
 
 
 # Target executable

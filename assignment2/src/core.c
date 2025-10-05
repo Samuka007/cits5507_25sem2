@@ -8,8 +8,7 @@
 
 #include "core.h"
 #include "core_mpi.h"
-
-bool VERBOSE = false;
+#include "log.h"
 
 int RANK;
 int SIZE;
@@ -33,6 +32,7 @@ void print_usage(const char *program_name) {
    printf("  -t          Time the execution in milliseconds\n");
    printf("  -T          Time the execution in seconds\n");
    printf("  -v          Verbose output\n");
+   printf("  -D          Debug output (per-rank)\n");
    printf("  -h          Show this help message\n");
    printf("\nExamples:\n");
    printf("  Generate and test with stride:\n");
@@ -57,13 +57,17 @@ void calculate_output_size(struct CalcInform* calc) {
 }
 
 void read_size_from_files(char* input_file, char* kernel_file, struct CalcInform* calc) {
-    int input_H, input_W, kernel_H, kernel_W;
+    int input_H = -1, input_W = -1, kernel_H = -1, kernel_W = -1;
+
+    LDEBUG("local input_H is initially %d (uninitialized)", input_H);
+
     if (RANK == 0) {
         // Read header only to get dimensions
         FILE *f = fopen(input_file, "r");
         if (f) {
             fscanf(f, "%d %d", &input_H, &input_W);
             fclose(f);
+            LDEBUG("Rank 0: Read input_H = %d from file.", input_H);
         }
         f = fopen(kernel_file, "r");
         if (f) {
@@ -71,7 +75,11 @@ void read_size_from_files(char* input_file, char* kernel_file, struct CalcInform
             fclose(f);
         }
     }
+
+    LDEBUG("Calling MPI_Bcast for input_H...");
     MPI_Bcast(&input_H, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    LDEBUG("After MPI_Bcast, local input_H is %d.", input_H);
+
     MPI_Bcast(&input_W, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&kernel_H, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&kernel_W, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -108,6 +116,7 @@ int init_params(
     int time_execution = 0;
     int time_execution_seconds = 0;
     int verbose = 0;
+    int debug = 0;
     int precision = 2;
 
     char *input_file = NULL;
@@ -129,11 +138,12 @@ int init_params(
 
     int long_index = 0;
     int opt;
-    while ((opt = getopt_long_only(argc, argv, "f:g:o:H:W:p:smtTvh",
+    while ((opt = getopt_long_only(argc, argv, "f:g:o:H:W:p:smtTvDh",
                                    long_options, &long_index)) != -1) {
         switch (opt) {
             case 'h':
-                print_usage(argv[0]);
+                // Root only to prevent garbled output
+                if (RANK == 0) print_usage(argv[0]);
                 exit(EXIT_SUCCESS);
 
             case 'f':
@@ -196,6 +206,9 @@ int init_params(
             case 'v':
                 verbose = 1;
                 break;
+            case 'D':
+                debug = 1;
+                break;
             case 'p':
                 precision = atoi(optarg);
                 if (precision <= 0) {
@@ -213,18 +226,26 @@ int init_params(
     bool has_generation = (input_H > 0) && (input_W > 0) && (kernel_H > 0) && (kernel_W > 0);
     bool has_input_files = (input_file != NULL) && (kernel_file != NULL);
     bool has_output_file = output_file != NULL;
-    int output_file_exist = true;
+    int output_file_exist = 0;
 
     // Init MPI, even if the program isn't running in MPI Context.
     init_mpi(&argc, &argv);
 
-    ROOT_DO(
-        output_file_exist = (access(output_file, F_OK) == 0);
-        MPI_Bcast(&output_file_exist, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    );
+    // Set global logging flags
+    g_log_verbose = verbose;
+    g_log_debug = debug;
+
+    // BUG FIX: The Bcast must be called by all processes, not just the root.
+    if (RANK == 0) {
+        output_file_exist = (output_file && access(output_file, F_OK) == 0);
+    }
+    MPI_Bcast(&output_file_exist, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    LDEBUG("Broadcasted output_file_exist = %d", output_file_exist);
+
 
     if (!has_generation && !has_input_files) {
-        perror("No inputs");
+        // perror("No inputs");
+        RERR("Either generation dimensions (-H, -W, -kH, -kW) or input files (-f, -g) must be provided.");
         return -1;
     }
 
@@ -254,6 +275,7 @@ int init_params(
     } else {
         return -1;
     }
+    LDEBUG("Determined execopt = %d", *execopt);
 
     if (*execopt == EXEC_Verify || *execopt == EXEC_PrintToScreen || *execopt == EXEC_CalcToFile) {
         read_size_from_files(input_file, kernel_file, calc);
@@ -276,7 +298,6 @@ int init_params(
     param->precision = precision;
     param->time_execution = time_execution;
     param->time_execution_seconds = time_execution_seconds;
-    VERBOSE = verbose;
 
     return 0;
 }

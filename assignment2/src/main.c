@@ -23,6 +23,7 @@
 #include "conv2d_mpi.h"
 #include "core.h"
 #include "core_mpi.h"
+#include "log.h"
 
 int main(int argc, char *argv[]) {
     struct Params param;
@@ -35,9 +36,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    LDEBUG("calc.output_H = %d", calc.output_H);
+
     // Determine optimal number of processes (limit to output rows)
     int optimal_processes = (SIZE > calc.output_H) ? calc.output_H : SIZE;
     bool is_active_process = (RANK < optimal_processes);
+
+    LDEBUG("Optimal processes = %d. This process is %sactive.",
+           optimal_processes, is_active_process ? "" : "not ");
 
     // Create sub-communicator for active processes only
     MPI_Comm active_comm;
@@ -47,12 +53,13 @@ int main(int argc, char *argv[]) {
                    &active_comm);
 
     if (optimal_processes < SIZE) {
-        DEBUGF("Using %d active processes (out of %d total)",
+        RVERB("Using %d active processes (out of %d total)",
                optimal_processes, SIZE);
     }
 
     // Inactive processes exit early
     if (!is_active_process) {
+        LDEBUG("Exiting as inactive.");
         MPI_Finalize();
         return EXIT_SUCCESS;
     }
@@ -60,13 +67,15 @@ int main(int argc, char *argv[]) {
     // Update rank and size for active communicator
     MPI_Comm_rank(active_comm, &RANK);
     MPI_Comm_size(active_comm, &SIZE);
+    LDEBUG("New active rank = %d. New active size = %d.", RANK, SIZE);
 
 
-    DEBUGF("Input dimensions: %d x %d", calc.input_H, calc.input_W);
-    DEBUGF("Kernel dimensions: %d x %d", calc.kernel_H, calc.kernel_W);
-    DEBUGF("Stride: %d x %d", calc.stride_H, calc.stride_W);
-    DEBUGF("Output dimensions: %d x %d", calc.output_H, calc.output_W);
-    DEBUGF("This program is execute under %d acceleration", accopt);
+    RVERB("Input dimensions: %d x %d", calc.input_H, calc.input_W);
+    RVERB("Kernel dimensions: %d x %d", calc.kernel_H, calc.kernel_W);
+    RVERB("Stride: %d x %d", calc.stride_H, calc.stride_W);
+    RVERB("Output dimensions: %d x %d", calc.output_H, calc.output_W);
+    RVERB("This program is execute under %d acceleration", accopt);
+    RVERB("SIZE of execution %d", SIZE);
 
     // ===================================================================
     // PHASE 3: INPUT ACQUISITION
@@ -84,7 +93,7 @@ int main(int argc, char *argv[]) {
 
         if (calc.stride_H == 1 && calc.stride_W == 1) {
             // PATH A: stride = 1 -> Parallel generation (no overlaps)
-            DEBUGF("Using PATH A: Parallel generation (stride=1)");
+            RVERB("Using PATH A: Parallel generation (stride=1)");
 
             // Each process generates its local portion directly
             local_padded_input = mpi_generate_local_padded_matrix(
@@ -94,7 +103,7 @@ int main(int argc, char *argv[]) {
             );
 
             if (local_padded_input == NULL) {
-                ERRORF("Rank %d: Failed to generate local padded input", RANK);
+                RERR("Rank %d: Failed to generate local padded input", RANK);
                 MPI_Comm_free(&active_comm);
                 MPI_Finalize();
                 exit(EXIT_FAILURE);
@@ -113,14 +122,14 @@ int main(int argc, char *argv[]) {
                 );
 
                 if (write_result == 0) {
-                    DEBUGF("Generated input saved to %s (parallel write)", param.input_filepath);
+                    RVERB("Generated input saved to %s (parallel write)", param.input_filepath);
                 } else {
-                    ERRORF("Failed to save input file.");
+                    RERR("Failed to save input file.");
                 }
             }
         } else {
             // PATH B: stride > 1 -> Root centralized generation (avoid overlap inconsistency)
-            DEBUGF("Using PATH B: Root centralized generation (stride>1)");
+            RVERB("Using PATH B: Root centralized generation (stride>1)");
 
             float **global_padded = NULL;
             int global_padded_H = -1, global_padded_W = -1;
@@ -134,7 +143,7 @@ int main(int argc, char *argv[]) {
                 );
 
                 if (global_padded == NULL) {
-                    ERRORF("Error: Failed to generate global padded matrix");
+                    RERR("Error: Failed to generate global padded matrix");
                     MPI_Comm_free(&active_comm);
                     MPI_Finalize();
                     exit(EXIT_FAILURE);
@@ -157,7 +166,7 @@ int main(int argc, char *argv[]) {
             );
 
             if (local_padded_input == NULL) {
-                ERRORF("Rank %d: Failed during distribution", RANK);
+                LWARN("Failed during distribution");
                 ROOT_DO(free_matrix(global_padded, global_padded_H));
                 MPI_Comm_free(&active_comm);
                 MPI_Finalize();
@@ -174,9 +183,9 @@ int main(int argc, char *argv[]) {
                     );
 
                     if (write_result == 0) {
-                        DEBUGF("Generated input saved to %s (root serial write)", param.input_filepath);
+                        RVERB("Generated input saved to %s (root serial write)", param.input_filepath);
                     } else {
-                        ERRORF("Input save failed");
+                        RERR("Input save failed");
                     }
 
                     // Free global matrix immediately
@@ -193,7 +202,7 @@ int main(int argc, char *argv[]) {
         ROOT_DO({
             kernel = generate_random_matrix(calc.kernel_H, calc.kernel_W, 0.0f, 1.0f);
             if (kernel == NULL) {
-                ERRORF("Error: Failed to generate kernel");
+                RERR("Error: Failed to generate kernel");
                 free_matrix(local_padded_input, padded_local_H);
                 MPI_Comm_free(&active_comm);
                 MPI_Finalize();
@@ -202,7 +211,7 @@ int main(int argc, char *argv[]) {
 
             if (execopt == EXEC_GenerateSave) {
                 write_matrix_to_file(param.kernel_filepath, kernel, calc.kernel_H, calc.kernel_W);
-                DEBUGF("Generated kernel saved to %s", param.kernel_filepath);
+                RVERB("Generated kernel saved to %s", param.kernel_filepath);
             }
         });
 
@@ -223,7 +232,7 @@ int main(int argc, char *argv[]) {
         );
 
         if (local_padded_input == NULL) {
-            ERRORF("Rank %d: Failed to read local padded input from file", RANK);
+            LWARN("Failed to read local padded input from file");
             MPI_Comm_free(&active_comm);
             MPI_Finalize();
             exit(EXIT_FAILURE);
@@ -233,7 +242,7 @@ int main(int argc, char *argv[]) {
         ROOT_DO ({
             read_matrix_from_file(param.kernel_filepath, &kernel, &calc.kernel_H, &calc.kernel_W);
             if (kernel == NULL) {
-                ERRORF("Error: Failed to read kernel from file %s", param.kernel_filepath);
+                RERR("Error: Failed to read kernel from file %s", param.kernel_filepath);
                 free_matrix(local_padded_input, padded_local_H);
                 MPI_Comm_free(&active_comm);
                 MPI_Finalize();
@@ -292,9 +301,9 @@ int main(int argc, char *argv[]) {
     // End timing
     mpi_timer_end(&timer);
     if (param.time_execution_seconds) {
-        INFOF("Timing - Convolution with stride: %.6f seconds", timer.elapsed_time);
+        RINFO("Timing - Convolution with stride: %.6f seconds", timer.elapsed_time);
     } else if (param.time_execution) {
-        INFOF("Timing - Convolution with stride: %.3f milliseconds",
+        RINFO("Timing - Convolution with stride: %.3f milliseconds",
                 timer.elapsed_time * 1000.0);
     }
 
@@ -339,17 +348,17 @@ int main(int argc, char *argv[]) {
                 if (expected_H == calc.output_H && expected_W == calc.output_W) {
                     float tolerance = pow(10.0f, -param.precision);
                     if (full_output != NULL && compare_matrices(full_output, expected, calc.output_H, calc.output_W, tolerance)) {
-                        INFOF("Verify Pass!\n");
+                        RINFO("Verify Pass!");
                     } else {
-                        INFOF("Verify Failed!\n");
+                        RINFO("Verify Failed!");
                     }
                 } else {
-                    ERRORF("Verify Failed! Dimension mismatch: expected %dx%d, got %dx%d",
+                    RERR("Verify Failed! Dimension mismatch: expected %dx%d, got %dx%d",
                            expected_H, expected_W, calc.output_H, calc.output_W);
                 }
                 free_matrix(expected, expected_H);
             } else {
-                ERRORF("Error reading expected output file for verification");
+                RERR("Error reading expected output file for verification");
             }
         }
     } else if (execopt == EXEC_GenerateSave || execopt == EXEC_CalcToFile) {
@@ -379,13 +388,13 @@ int main(int argc, char *argv[]) {
         );
 
         if (write_result != 0) {
-            ERRORF("Error: Failed to write output file");
+            RERR("Error: Failed to write output file");
         }
     } else ROOT_DO(
         if (calc.output_H <= 10 && calc.output_W <= 10) {
             print_matrix(full_output, calc.output_H, calc.output_W);
         } else {
-            INFOF("Result computed (%dx%d)", calc.output_H, calc.output_W);
+            RINFO("Result computed (%dx%d)", calc.output_H, calc.output_W);
         }
     )
 
@@ -400,4 +409,5 @@ int main(int argc, char *argv[]) {
     MPI_Comm_free(&active_comm);
     MPI_Finalize();
     return EXIT_SUCCESS;
+
 }
