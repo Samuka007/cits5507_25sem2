@@ -42,6 +42,13 @@ extern bool g_log_debug;
     } \
 } while (0)
 
+#define PUT_ROOT_ONLY(color, level_str, format, ...) do { \
+    int rank_ = -1; \
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank_); \
+    if (rank_ == 0) { \
+        printf("%s[%s] " C_NRM format "\n", color, level_str, ##__VA_ARGS__); \
+    } \
+} while (0)
 
 // ===================================================================
 //                          PUBLIC API
@@ -53,6 +60,6 @@ extern bool g_log_debug;
 
 
 // --- Root-Only Logging Macros ---
-#define RINFO(format, ...)     LOG_ROOT_ONLY(C_GRN, "INFO", format, ##__VA_ARGS__)
+#define RINFO(format, ...)     PUT_ROOT_ONLY(C_GRN, "INFO", format, ##__VA_ARGS__)
 #define RERR(format, ...)    LOG_ROOT_ONLY(C_RED, "ERROR", format, ##__VA_ARGS__)
-#define RVERB(format, ...)  do { if (g_log_verbose) { LOG_ROOT_ONLY(C_CYN, "VERBOSE", format, ##__VA_ARGS__); } } while (0)
+#define RVERB(format, ...)  do { if (g_log_verbose) { PUT_ROOT_ONLY(C_CYN, "VERBOSE", format, ##__VA_ARGS__); } } while (0)

@@ -77,6 +77,17 @@ stress: $(TARGET)
 	@echo "Large matrix (4000x4000) stride 3x3:"
 	mpirun -np 4 ./$(TARGET) -H 4000 -W 4000 -kH 5 -kW 5 -sH 3 -sW 3 -t
 
+PROCESS ?= 8
+RANK ?= 100000
+KERNEL ?= 7
+STRIDE ?= 3
+
+benchmark: $(TARGET)
+	mpiexec -n $(PROCESS) ./$(TARGET) \
+		-H $(RANK) -W $(RANK) \
+		-kH $(KERNEL) -kW $(KERNEL) \
+		-sH $(STRIDE) -sW $(STRIDE) -T -m -D -v
+
 # Install MPI dependencies (for systems that need it)
 install-deps:
 	@echo "Installing MPI and OpenMP development libraries..."
